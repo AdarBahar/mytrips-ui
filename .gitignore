@@ -1,0 +1,248 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+
+# Environment variables and secrets - CRITICAL FOR SECURITY
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+.env.backup
+
+# API keys and configuration files - CRITICAL FOR SECURITY
+config/secrets.json
+config/keys.json
+config/credentials.json
+config/private.json
+auth.json
+credentials/
+secrets/
+private/
+*.key
+*.pem
+*.p12
+*.pfx
+*.private
+*.secret
+
+# Authentication tokens and session data
+token.json
+session.json
+auth-token*
+access-token*
+refresh-token*
+jwt-token*
+
+# Database credentials and connection strings
+database.json
+db-config.json
+connection-string*
+
+# Cloud service credentials
+.aws/
+.gcp/
+.azure/
+firebase-adminsdk-*.json
+service-account*.json
+
+# IDE and editor files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+.nyc_output/
+
+# Dependency directories
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js build output
+.next/
+out/
+
+# Nuxt.js build / generate output
+.nuxt/
+
+# Gatsby files
+.cache/
+public/
+
+# Storybook build outputs
+.out/
+.storybook-out/
+storybook-static/
+
+# Temporary folders
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# Certificates and keys - CRITICAL FOR SECURITY
+*.crt
+*.csr
+*.der
+*.p7b
+*.p7c
+*.p7m
+*.p7s
+*.gpg
+*.asc
+
+# SSH keys - CRITICAL FOR SECURITY
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+known_hosts
+authorized_keys
+
+# Local development files
+*.local.js
+*.local.ts
+*.local.json
+local.config.*
+dev.config.*
+development.config.*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker sensitive files
+docker-compose.override.yml
+.dockerignore
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Vercel
+.vercel/
+
+# Netlify
+.netlify/
+
+# Test files that might contain sensitive data
+test-data/private/
+fixtures/private/
+mock-data/private/
+
+# Debug and profiling
+*.cpuprofile
+*.heapsnapshot
+
+# Cache files
+.eslintcache
+.prettiercache
+.stylelintcache
+.jest/
+
+# Test results
+test-results/
+playwright-report/
+playwright/.cache/
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+# Local history
+.history/
+
+# Application specific sensitive files
+api-keys.json
+client-secrets.json
+oauth-credentials.json
+webhook-secrets.json
+
+# Package manager lock files (uncomment if you want to ignore them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
