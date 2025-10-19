@@ -14,7 +14,36 @@ const TripDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [usingFallback, setUsingFallback] = useState(false);
+  const [routingData, setRoutingData] = useState(null);
+  const [loadingRouting, setLoadingRouting] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [expandedDays, setExpandedDays] = useState(new Set());
+
+  // Sort stops in logical order: Start, via stops (by sequence), End
+  const getSortedStopsWithUISequence = (stops) => {
+    if (!stops || stops.length === 0) return [];
+
+    // Sort stops by their API sequence number first
+    const sortedStops = [...stops].sort((a, b) => {
+      const seqA = a.seq || 0;
+      const seqB = b.seq || 0;
+      return seqA - seqB;
+    });
+
+    // Separate by kind and maintain sequence order
+    const startStops = sortedStops.filter(stop => stop.kind === 'start');
+    const viaStops = sortedStops.filter(stop => stop.kind === 'via');
+    const endStops = sortedStops.filter(stop => stop.kind === 'end');
+
+    // Combine in logical order: Start, via stops, End
+    const orderedStops = [...startStops, ...viaStops, ...endStops];
+
+    // Add UI sequence numbers (1, 2, 3, 4...)
+    return orderedStops.map((stop, index) => ({
+      ...stop,
+      uiSequence: index + 1
+    }));
+  };
 
   useEffect(() => {
     loadTripDetails();
@@ -67,16 +96,17 @@ const TripDetailPage = () => {
               console.log(`    - Stops count: ${day.stops?.length || 0}`);
 
               if (day.stops && day.stops.length > 0) {
+                // Show original order
+                console.log(`    📍 Original stops order (${day.stops.length} stops):`);
                 day.stops.forEach((stop, stopIndex) => {
-                  console.log(`    📍 Stop ${stop.seq || stopIndex + 1}:`);
-                  console.log(`      - Stop ID: ${stop.id}`);
-                  console.log(`      - Kind: ${stop.kind} (${stop.kind === 'start' ? 'Start Point' : stop.kind === 'end' ? 'End Point' : stop.kind === 'via' ? 'Via Point' : 'Unknown'})`);
-                  console.log(`      - Stop Type: ${stop.stop_type} (usually "other")`);
-                  console.log(`      - Place name: ${stop.place?.name || 'No place name'}`);
-                  console.log(`      - Place address: ${stop.place?.address || 'No address'}`);
-                  console.log(`      - Coordinates: ${stop.place?.lat}, ${stop.place?.lon}`);
-                  console.log(`      - Fixed: ${stop.fixed}`);
-                  console.log(`      - Notes: ${stop.notes || 'No notes'}`);
+                  console.log(`      ${stopIndex + 1}. API seq: ${stop.seq}, Kind: ${stop.kind}, Name: ${stop.place?.name || 'No name'}`);
+                });
+
+                // Show sorted order
+                const sortedStops = getSortedStopsWithUISequence(day.stops);
+                console.log(`    🔄 Sorted stops order (logical: Start → Via → End):`);
+                sortedStops.forEach((stop, index) => {
+                  console.log(`      ${stop.uiSequence}. ${stop.kind === 'start' ? '🚀' : stop.kind === 'end' ? '🏁' : '📍'} ${stop.kind}: ${stop.place?.name || 'No name'} (API seq: ${stop.seq})`);
                 });
               }
 
@@ -98,6 +128,12 @@ const TripDetailPage = () => {
           }
 
           setTripData(completeResult.data);
+
+          // Fetch additional routing data for comprehensive time/distance information
+          if (completeResult.data.days && completeResult.data.days.length > 0) {
+            await fetchRoutingData(completeResult.data);
+          }
+
           return;
         }
       } catch (completeError) {
@@ -119,6 +155,111 @@ const TripDetailPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fetch comprehensive routing data for the trip
+  const fetchRoutingData = async (tripData) => {
+    try {
+      setLoadingRouting(true);
+      console.log('🗺️ FETCHING COMPREHENSIVE ROUTING DATA for trip:', tripData.trip?.id);
+
+      const dayIds = tripData.days?.map(day => day.id).filter(id => id) || [];
+
+      if (dayIds.length > 0) {
+        console.log('📊 Getting bulk route summaries for days:', dayIds);
+
+        // Get bulk route summaries for all days
+        const routingResult = await tripsService.getBulkRouteSummaries(dayIds);
+
+        if (routingResult.success) {
+          console.log('✅ ROUTING DATA RECEIVED:', routingResult.summaries);
+          setRoutingData(routingResult.summaries);
+
+          // Calculate and log trip totals
+          const tripTotals = calculateTripTotals(routingResult.summaries);
+          console.log('📊 CALCULATED TRIP TOTALS:', tripTotals);
+        } else {
+          console.error('❌ FAILED TO GET ROUTING DATA:', routingResult.error);
+        }
+      } else {
+        console.log('⚠️ No valid day IDs found for routing data');
+      }
+    } catch (err) {
+      console.error('❌ ROUTING FETCH ERROR:', err);
+    } finally {
+      setLoadingRouting(false);
+    }
+  };
+
+  // Calculate total distance and time for the entire trip
+  const calculateTripTotals = (summaries) => {
+    if (!summaries || !summaries.summaries) {
+      console.log('⚠️ No summaries data for trip totals calculation');
+      return { total_distance_km: 0, total_duration_min: 0, total_days: 0 };
+    }
+
+    const totals = summaries.summaries.reduce((acc, summary) => {
+      const distance = summary.route_total_km || 0;
+      const duration = summary.route_total_min || 0;
+
+      console.log(`📊 Day ${summary.day_id}: ${distance}km, ${duration}min`);
+
+      return {
+        total_distance_km: acc.total_distance_km + distance,
+        total_duration_min: acc.total_duration_min + duration,
+        total_days: acc.total_days + 1
+      };
+    }, { total_distance_km: 0, total_duration_min: 0, total_days: 0 });
+
+    return totals;
+  };
+
+  // Format duration from minutes to human readable format (rounded up)
+  const formatDuration = (minutes) => {
+    if (!minutes || minutes === 0) return '0 min';
+
+    // Round up minutes to whole numbers
+    const roundedMinutes = Math.ceil(minutes);
+    const hours = Math.floor(roundedMinutes / 60);
+    const mins = roundedMinutes % 60;
+
+    if (hours === 0) return `${mins} min`;
+    if (mins === 0) return `${hours}h`;
+    return `${hours}h ${mins}min`;
+  };
+
+  // Format distance to human readable format (rounded up)
+  const formatDistance = (km) => {
+    if (!km || km === 0) return '0 km';
+
+    if (km < 1) {
+      return `${Math.ceil(km * 1000)} m`;
+    }
+
+    // Round up km to whole numbers
+    return `${Math.ceil(km)} km`;
+  };
+
+  // Get route summary for a specific day
+  const getRouteSummaryForDay = (dayId) => {
+    if (!routingData || !routingData.summaries) return null;
+
+    return routingData.summaries.find(summary => summary.day_id === dayId);
+  };
+
+
+
+  // Toggle day expansion
+  const toggleDayExpansion = (dayId) => {
+    setExpandedDays(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dayId)) {
+        newSet.delete(dayId);
+      } else {
+        newSet.add(dayId);
+      }
+      return newSet;
+    });
   };
 
   const handleBackToTrips = () => {
@@ -287,6 +428,54 @@ const TripDetailPage = () => {
               </div>
             </div>
 
+            {/* Routing Information Section */}
+            {loadingRouting ? (
+              <div className="routing-loading">
+                <LoadingAnimation size="small" text="Loading route information..." />
+              </div>
+            ) : routingData && routingData.summaries ? (
+              <div className="routing-info-section">
+                <h3>🗺️ Route Information</h3>
+                <div className="trip-totals-grid">
+                  {(() => {
+                    const totals = calculateTripTotals(routingData);
+                    return (
+                      <>
+                        <div className="total-card">
+                          <span className="total-icon">🛣️</span>
+                          <span className="total-value">{formatDistance(totals.total_distance_km)}</span>
+                          <span className="total-label">Total Distance</span>
+                        </div>
+                        <div className="total-card">
+                          <span className="total-icon">⏱️</span>
+                          <span className="total-value">{formatDuration(totals.total_duration_min)}</span>
+                          <span className="total-label">Total Driving Time</span>
+                        </div>
+                        <div className="total-card">
+                          <span className="total-icon">📊</span>
+                          <span className="total-value">{totals.total_days}</span>
+                          <span className="total-label">Days with Routes</span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+
+              </div>
+            ) : tripData && tripData.days && tripData.days.length > 0 ? (
+              <div className="routing-info-placeholder">
+                <h3>🗺️ Route Information</h3>
+                <p>Route information is being calculated for this trip...</p>
+                <button
+                  onClick={() => fetchRoutingData(tripData)}
+                  className="refresh-routing-btn"
+                  disabled={loadingRouting}
+                >
+                  {loadingRouting ? 'Loading...' : 'Refresh Route Data'}
+                </button>
+              </div>
+            ) : null}
+
             <div className="trip-info-grid">
               {trip.start_date && (
                 <div className="info-item">
@@ -314,81 +503,107 @@ const TripDetailPage = () => {
               <div className="days-list">
                 {days.map((day, index) => (
                   <div key={day.id || index} className="day-card">
-                    <div className="day-header">
-                      <h3>Day {day.seq}</h3>
+                    <div
+                      className="day-header clickable"
+                      onClick={() => toggleDayExpansion(day.id)}
+                    >
+                      <div className="day-title-section">
+                        <div className="day-title-row">
+                          <h3>Day {day.seq}</h3>
+                          <span className={`expand-icon ${expandedDays.has(day.id) ? 'expanded' : ''}`}>
+                            {expandedDays.has(day.id) ? '▼' : '▶'}
+                          </span>
+                        </div>
+                        {(() => {
+                          const routeSummary = getRouteSummaryForDay(day.id);
+                          if (routeSummary) {
+                            return (
+                              <span className="day-route-summary">
+                                {formatDistance(routeSummary.route_total_km)}, {formatDuration(routeSummary.route_total_min)} drive
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                       {day.calculated_date && (
                         <span className="day-date">{new Date(day.calculated_date).toLocaleDateString()}</span>
                       )}
                     </div>
 
-                    {day.stops && day.stops.length > 0 ? (
-                      <div className="stops-list">
-                        {day.stops.map((stop, stopIndex) => (
-                          <div key={stop.id || stopIndex} className="stop-card">
-                            <div className="stop-header">
-                              <span className={`stop-kind ${stop.kind}`}>
-                                {stop.kind === 'start' ? '🚀' : stop.kind === 'end' ? '🏁' : stop.kind === 'via' ? '📍' : '❓'}
-                              </span>
-                              <span className="stop-sequence">#{stop.seq}</span>
-                              <span className={`stop-kind-label ${stop.kind}`}>
-                                {stop.kind === 'start' ? 'Start' : stop.kind === 'end' ? 'End' : stop.kind === 'via' ? 'Stop' : 'Unknown'}
-                              </span>
-                            </div>
+                    {/* Collapsible Day Content */}
+                    {expandedDays.has(day.id) && (
+                      <div className="day-content">
+                        {day.stops && day.stops.length > 0 ? (
+                          <div className="stops-list">
+                            {getSortedStopsWithUISequence(day.stops).map((stop, stopIndex) => (
+                              <div key={stop.id || stopIndex} className="stop-card">
+                                <div className="stop-header">
+                                  <span className={`stop-kind ${stop.kind}`}>
+                                    {stop.kind === 'start' ? '🚀' : stop.kind === 'end' ? '🏁' : stop.kind === 'via' ? '📍' : '❓'}
+                                  </span>
+                                  <span className="stop-sequence">#{stop.uiSequence}</span>
+                                  <span className={`stop-kind-label ${stop.kind}`}>
+                                    {stop.kind === 'start' ? 'Start' : stop.kind === 'end' ? 'End' : stop.kind === 'via' ? 'Stop' : 'Unknown'}
+                                  </span>
+                                </div>
 
-                            {stop.place && (
-                              <div className="place-info">
-                                <h4 className="place-name">{stop.place.name}</h4>
-                                {stop.place.address && (
-                                  <p className="place-address">📍 {stop.place.address}</p>
+                                {stop.place && (
+                                  <div className="place-info">
+                                    <h4 className="place-name">{stop.place.name}</h4>
+                                    {stop.place.address && (
+                                      <p className="place-address">📍 {stop.place.address}</p>
+                                    )}
+                                    {stop.place.coordinates && (
+                                      <p className="place-coordinates">
+                                        🗺️ {stop.place.coordinates.lat}, {stop.place.coordinates.lng}
+                                      </p>
+                                    )}
+                                  </div>
                                 )}
-                                {stop.place.coordinates && (
-                                  <p className="place-coordinates">
-                                    🗺️ {stop.place.coordinates.lat}, {stop.place.coordinates.lng}
-                                  </p>
+
+                                {stop.notes && (
+                                  <div className="stop-notes">
+                                    <p>📝 {stop.notes}</p>
+                                  </div>
                                 )}
                               </div>
-                            )}
-
-                            {stop.notes && (
-                              <div className="stop-notes">
-                                <p>📝 {stop.notes}</p>
-                              </div>
-                            )}
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="no-stops">
-                        <p>No stops planned for this day</p>
-                      </div>
-                    )}
+                        ) : (
+                          <div className="no-stops">
+                            <p>No stops planned for this day</p>
+                          </div>
+                        )}
 
-                    {/* Route Summary from bulk-active-summaries */}
-                    {day.route_summary && (
-                      <div className="route-summary">
-                        <h4>🗺️ Route Summary</h4>
-                        <div className="route-summary-stats">
-                          <span className="route-stat">
-                            📏 {day.route_summary.total_distance || 'N/A'}
-                          </span>
-                          <span className="route-stat">
-                            ⏱️ {day.route_summary.total_duration || 'N/A'}
-                          </span>
-                          {day.route_summary.total_stops && (
-                            <span className="route-stat">
-                              📍 {day.route_summary.total_stops} stops
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                        {/* Route Summary from bulk-active-summaries */}
+                        {day.route_summary && (
+                          <div className="route-summary">
+                            <h4>🗺️ Route Summary</h4>
+                            <div className="route-summary-stats">
+                              <span className="route-stat">
+                                📏 {day.route_summary.total_distance || 'N/A'}
+                              </span>
+                              <span className="route-stat">
+                                ⏱️ {day.route_summary.total_duration || 'N/A'}
+                              </span>
+                              {day.route_summary.total_stops && (
+                                <span className="route-stat">
+                                  📍 {day.route_summary.total_stops} stops
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
-                    {/* Legacy route_info fallback */}
-                    {!day.route_summary && day.route_info && (
-                      <div className="route-info">
-                        <h4>🗺️ Route Information</h4>
-                        <p>Distance: {day.route_info.distance || 'N/A'}</p>
-                        <p>Duration: {day.route_info.duration || 'N/A'}</p>
+                        {/* Legacy route_info fallback */}
+                        {!day.route_summary && day.route_info && (
+                          <div className="route-info">
+                            <h4>🗺️ Route Information</h4>
+                            <p>Distance: {day.route_info.distance || 'N/A'}</p>
+                            <p>Duration: {day.route_info.duration || 'N/A'}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

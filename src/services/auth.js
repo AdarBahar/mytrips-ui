@@ -549,5 +549,68 @@ export const tripsService = {
         statusCode: error.response?.status
       };
     }
+  },
+
+  // Get bulk route summaries for multiple days (efficient for getting time/distance for all days)
+  async getBulkRouteSummaries(dayIds) {
+    try {
+      debugLogger.api('Getting bulk route summaries', { dayIds });
+
+      const response = await api.post('/routing/days/bulk-active-summaries', {
+        day_ids: dayIds
+      });
+
+      debugLogger.api('Bulk route summaries response', {
+        summariesCount: response.data?.summaries?.length || 0,
+        data: response.data
+      });
+
+      return { success: true, summaries: response.data };
+    } catch (error) {
+      debugLogger.error('Failed to get bulk route summaries', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Get single day route summary (alternative to bulk for individual days)
+  async getSingleDayRouteSummary(dayId) {
+    try {
+      debugLogger.api('Getting single day route summary', { dayId });
+
+      const response = await api.get(`/routing/days/${dayId}/active-summary`);
+
+      debugLogger.api('Single day route summary response', response.data);
+      return { success: true, summary: response.data };
+    } catch (error) {
+      debugLogger.error('Failed to get single day route summary', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Enhanced route breakdown with comprehensive segment data
+  async getDetailedRouteBreakdown(tripId, dayId, start, stops, end, profile = 'car') {
+    try {
+      debugLogger.api('Getting detailed route breakdown', { tripId, dayId, start, stops, end, profile });
+
+      const response = await api.post('/routing/days/route-breakdown', {
+        trip_id: tripId,
+        day_id: dayId,
+        start: start,
+        stops: stops,
+        end: end,
+        profile: profile
+      });
+
+      debugLogger.api('Detailed route breakdown response', {
+        total_distance_km: response.data?.total_distance_km,
+        total_duration_min: response.data?.total_duration_min,
+        segments_count: response.data?.segments?.length || 0
+      });
+
+      return { success: true, breakdown: response.data };
+    } catch (error) {
+      debugLogger.error('Failed to get detailed route breakdown', error);
+      return { success: false, error: error.message };
+    }
   }
 };

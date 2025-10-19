@@ -876,6 +876,201 @@
   font-size: 0.85rem;
 }
 
+/* Routing Information Section */
+.routing-info-section {
+  margin: 1.5rem 0;
+  padding: 1.25rem;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+}
+
+.routing-info-section h3 {
+  margin: 0 0 1.25rem 0;
+  color: #2c3e50;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.routing-loading {
+  text-align: center;
+  padding: 1.25rem;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  margin: 1.25rem 0;
+}
+
+.routing-info-placeholder {
+  padding: 1.25rem;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  margin: 1.25rem 0;
+  text-align: center;
+}
+
+.routing-info-placeholder h3 {
+  margin: 0 0 0.9375rem 0;
+  color: #2c3e50;
+}
+
+.refresh-routing-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-top: 0.625rem;
+  transition: background-color 0.2s ease;
+}
+
+.refresh-routing-btn:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.refresh-routing-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+/* Trip totals grid */
+.trip-totals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.9375rem;
+  margin-bottom: 1.5625rem;
+}
+
+.total-card {
+  background: white;
+  border: 2px solid #007bff;
+  border-radius: 10px;
+  padding: 1.125rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease;
+}
+
+.total-card:hover {
+  transform: translateY(-2px);
+}
+
+.total-icon {
+  font-size: 1.5rem;
+}
+
+.total-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #007bff;
+}
+
+.total-label {
+  font-size: 0.75rem;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Daily routes breakdown */
+.daily-routes-breakdown {
+  margin-top: 1.5625rem;
+}
+
+.daily-routes-breakdown h4 {
+  margin: 0 0 0.9375rem 0;
+  color: #2c3e50;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.daily-routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.daily-route-card {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 0.9375rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.daily-route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.625rem;
+}
+
+.day-number {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.875rem;
+}
+
+.route-metrics {
+  display: flex;
+  gap: 0.9375rem;
+  align-items: center;
+}
+
+.route-distance {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.route-duration {
+  background: #f3e5f5;
+  color: #7b1fa2;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.route-endpoints {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.8125rem;
+  color: #6c757d;
+}
+
+.route-start, .route-end {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  flex: 1;
+}
+
+.endpoint-icon {
+  font-size: 0.875rem;
+}
+
+.endpoint-name {
+  font-weight: 500;
+  color: #495057;
+}
+
+.route-arrow {
+  color: #007bff;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
 /* Itinerary Section */
 .itinerary-section {
   background: white;
@@ -911,6 +1106,37 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: background-color 0.2s ease;
+}
+
+.day-header.clickable {
+  cursor: pointer;
+}
+
+.day-header.clickable:hover {
+  background: #0056b3;
+}
+
+.day-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.day-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.expand-icon {
+  font-size: 0.875rem;
+  transition: transform 0.2s ease;
+  user-select: none;
+}
+
+.expand-icon.expanded {
+  transform: rotate(0deg);
 }
 
 .day-header h3 {
@@ -919,9 +1145,24 @@
   font-weight: 600;
 }
 
+.day-route-summary {
+  font-size: 0.8rem;
+  opacity: 0.9;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+
 .day-date {
   font-size: 0.875rem;
   opacity: 0.9;
+}
+
+.day-content {
+  background: white;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .stops-list {
@@ -1113,6 +1354,22 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+
+  .day-title-section {
+    gap: 0.375rem;
+  }
+
+  .day-title-row {
+    gap: 0.5rem;
+  }
+
+  .day-route-summary {
+    font-size: 0.75rem;
+  }
+
+  .expand-icon {
+    font-size: 0.75rem;
   }
 
   .stop-header {
