@@ -56,6 +56,12 @@ export function useRouteOptimization(): UseRouteOptimizationResult {
         request: optimizationRequest,
       });
 
+      // Add detailed console logging for debugging
+      console.log('🎯 ROUTE OPTIMIZATION REQUEST:');
+      console.log('  URL: POST /routing/optimize');
+      console.log('  Request Body:', JSON.stringify(optimizationRequest, null, 2));
+      console.log('  Request Size:', JSON.stringify(optimizationRequest).length, 'bytes');
+
       // Get auth token
       const authToken = localStorage.getItem('authToken');
       if (!authToken) {
@@ -78,6 +84,11 @@ export function useRouteOptimization(): UseRouteOptimizationResult {
         statusText: response.statusText,
       });
 
+      console.log('🎯 ROUTE OPTIMIZATION RESPONSE:');
+      console.log('  Status:', response.status);
+      console.log('  Status Text:', response.statusText);
+      console.log('  Headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
         // Handle error responses
         let errorData;
@@ -86,6 +97,11 @@ export function useRouteOptimization(): UseRouteOptimizationResult {
         } catch (parseError) {
           errorData = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
+
+        console.log('🎯 ROUTE OPTIMIZATION ERROR:');
+        console.log('  Status:', response.status);
+        console.log('  Status Text:', response.statusText);
+        console.log('  Error Data:', JSON.stringify(errorData, null, 2));
 
         debugLogger.api('OPTIMIZATION', 'Optimization failed', {
           status: response.status,

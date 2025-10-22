@@ -1,0 +1,1 @@
+on Your Trips page: Status :[Edit]. should be Status: <status> [Edit]

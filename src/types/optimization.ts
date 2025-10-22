@@ -17,17 +17,28 @@ export interface OptimizationLocation {
 }
 
 export interface OptimizationRequest {
+  trip_id: string;
+  day_id: string;
+  start: {
+    lat: number;
+    lng: number;
+    name: string;
+  };
+  stops: Array<{
+    lat: number;
+    lng: number;
+    name: string;
+  }>;
+  end: {
+    lat: number;
+    lng: number;
+    name: string;
+  };
+  objective: 'time' | 'distance';
+  vehicle_profile: 'car' | 'bike' | 'foot';
+  units: 'metric' | 'imperial';
+  avoid?: ('tolls' | 'ferries' | 'highways')[];
   prompt?: string;
-  meta: {
-    version: '1.0';
-    objective: 'time' | 'distance';
-    vehicle_profile: 'car' | 'bike' | 'foot';
-    units: 'metric' | 'imperial';
-    avoid?: ('tolls' | 'ferries' | 'highways')[];
-  };
-  data: {
-    locations: OptimizationLocation[];
-  };
 }
 
 export interface OptimizedLocation {

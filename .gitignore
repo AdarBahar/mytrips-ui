@@ -14,12 +14,21 @@ build/
 
 # Environment variables and secrets - CRITICAL FOR SECURITY
 .env
+.env.*
 .env.local
+.env.development
 .env.development.local
+.env.test
 .env.test.local
+.env.production
 .env.production.local
+.env.staging
+.env.staging.local
 .env.*.local
 .env.backup
+.env.example
+.env.sample
+.env.template
 
 # API keys and configuration files - CRITICAL FOR SECURITY
 config/secrets.json
@@ -122,6 +131,18 @@ jspm_packages/
 
 # Output of 'npm pack'
 *.tgz
+
+# Deployment packages and archives - CRITICAL FOR SECURITY
+*.zip
+*.tar
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+mytrips-ui*.zip
+deployment-*.zip
+build-*.zip
+dist-*.zip
 
 # Yarn Integrity file
 .yarn-integrity

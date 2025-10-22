@@ -74,7 +74,10 @@ api.interceptors.response.use(
       debugLogger.auth('Token expired or invalid - handling logout');
 
       // Token expired or invalid - but don't redirect if we're already on login page
-      if (!window.location.pathname.includes('/login')) {
+      const currentPath = window.location.pathname;
+      const isOnLoginPage = currentPath.includes('/login') || currentPath === '/';
+
+      if (!isOnLoginPage) {
         debugLogger.storage('REMOVE', 'authToken');
         debugLogger.storage('REMOVE', 'userEmail');
         debugLogger.storage('REMOVE', 'userPassword');
@@ -82,7 +85,11 @@ api.interceptors.response.use(
         localStorage.removeItem('authToken');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('userPassword');
-        window.location.href = '/login';
+
+        // Use React Router navigation if available, otherwise fallback to window.location
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

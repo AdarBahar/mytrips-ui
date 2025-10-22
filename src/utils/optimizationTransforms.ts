@@ -55,20 +55,48 @@ export function transformDayToOptimizationRequest(
     return location;
   });
 
-  // Build optimization request
-  const request: OptimizationRequest = {
-    prompt: options.prompt,
-    meta: {
-      version: '1.0',
-      objective: options.objective || 'time',
-      vehicle_profile: options.vehicleProfile || 'car',
-      units: 'metric',
-      avoid: options.avoid || [],
+  // Try a simpler format similar to route-breakdown endpoint
+  // Separate start, via stops, and end
+  const startStop = sortedStops.find(stop => stop.kind === 'start');
+  const endStop = sortedStops.find(stop => stop.kind === 'end');
+  const viaStops = sortedStops.filter(stop => stop.kind === 'via');
+
+  if (!startStop || !endStop) {
+    throw new Error('Start and end stops are required for optimization');
+  }
+
+  // Build request similar to route-breakdown format
+  const request = {
+    trip_id: day.trip_id,
+    day_id: day.id,
+    start: {
+      lat: startStop.place.lat,
+      lng: startStop.place.lon, // Use lng for API
+      name: startStop.place.name,
     },
-    data: {
-      locations,
+    stops: viaStops.map(stop => ({
+      lat: stop.place.lat,
+      lng: stop.place.lon, // Use lng for API
+      name: stop.place.name,
+    })),
+    end: {
+      lat: endStop.place.lat,
+      lng: endStop.place.lon, // Use lng for API
+      name: endStop.place.name,
     },
+    objective: options.objective || 'time',
+    vehicle_profile: options.vehicleProfile || 'car',
+    units: 'metric',
   };
+
+  // Add optional fields only if provided
+  if (options.avoid && options.avoid.length > 0) {
+    request.avoid = options.avoid;
+  }
+
+  if (options.prompt && options.prompt.trim()) {
+    request.prompt = options.prompt.trim();
+  }
 
   return request;
 }

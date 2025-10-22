@@ -17,9 +17,12 @@ function App() {
     initializeDebug();
   }, []);
 
+  // Use basename only in production
+  const basename = import.meta.env.PROD ? "/MyTrips" : "";
+
   return (
     <AuthProvider>
-      <Router>
+      <Router basename={basename}>
         <div className="app">
           <Routes>
             {/* Public routes */}
