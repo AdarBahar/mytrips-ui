@@ -11,7 +11,9 @@
 /* Home Page Styles */
 .home-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%),
+    url('./assets/mytrips.png') center center / cover no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -79,7 +81,9 @@
 /* Login Page Styles */
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%),
+    url('./assets/mytrips.png') center center / cover no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
