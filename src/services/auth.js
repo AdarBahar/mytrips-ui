@@ -565,7 +565,16 @@ export const tripsService = {
         data: response.data
       });
 
-      return { success: true, summaries: response.data };
+      console.log('🔍 BULK ROUTE SUMMARIES DEBUG:');
+      console.log('  Full response.data:', JSON.stringify(response.data, null, 2));
+      console.log('  response.data.summaries:', response.data?.summaries);
+      console.log('  Is summaries an array?', Array.isArray(response.data?.summaries));
+
+      // Return the actual summaries array, not the whole response.data
+      return {
+        success: true,
+        summaries: response.data?.summaries || response.data || []
+      };
     } catch (error) {
       debugLogger.error('Failed to get bulk route summaries', error);
       return { success: false, error: error.message };
@@ -611,6 +620,290 @@ export const tripsService = {
     } catch (error) {
       debugLogger.error('Failed to get detailed route breakdown', error);
       return { success: false, error: error.message };
+    }
+  },
+
+  // Get optimized stop order for a day using route breakdown
+  async getOptimizedStopOrder(tripId, dayId, stops) {
+    try {
+      debugLogger.api('Getting optimized stop order', { tripId, dayId, stops: stops.length });
+
+      if (!stops || stops.length < 3) {
+        // Need at least start, one via stop, and end for optimization
+        debugLogger.api('Insufficient stops for optimization', { stopsCount: stops?.length || 0 });
+        return { success: true, optimizedStops: stops || [] };
+      }
+
+      // Separate stops by kind
+      const startStop = stops.find(stop => stop.kind === 'start');
+      const endStop = stops.find(stop => stop.kind === 'end');
+      const viaStops = stops.filter(stop => stop.kind === 'via');
+
+      debugLogger.api('Stop analysis', {
+        hasStart: !!startStop,
+        hasEnd: !!endStop,
+        viaCount: viaStops.length,
+        startCoords: startStop ? `${startStop.place?.lat || startStop.place?.coordinates?.lat}, ${startStop.place?.lon || startStop.place?.coordinates?.lng}` : 'none',
+        endCoords: endStop ? `${endStop.place?.lat || endStop.place?.coordinates?.lat}, ${endStop.place?.lon || endStop.place?.coordinates?.lng}` : 'none'
+      });
+
+      if (!startStop || !endStop || viaStops.length === 0) {
+        debugLogger.api('Missing required stops for optimization', {
+          hasStart: !!startStop,
+          hasEnd: !!endStop,
+          viaCount: viaStops.length
+        });
+        return { success: true, optimizedStops: stops || [] };
+      }
+
+      // Helper function to extract coordinates
+      const getCoordinates = (stop) => {
+        const lat = stop.place?.lat || stop.place?.coordinates?.lat;
+        const lon = stop.place?.lon || stop.place?.coordinates?.lng;
+
+        if (!lat || !lon || isNaN(lat) || isNaN(lon)) {
+          debugLogger.error('Invalid coordinates for stop', {
+            stopName: stop.place?.name,
+            lat,
+            lon,
+            place: stop.place
+          });
+          return null;
+        }
+
+        return { lat: parseFloat(lat), lon: parseFloat(lon) };
+      };
+
+      // Validate coordinates for all stops
+      const startCoords = getCoordinates(startStop);
+      const endCoords = getCoordinates(endStop);
+
+      if (!startCoords || !endCoords) {
+        debugLogger.error('Invalid start or end coordinates');
+        return { success: true, optimizedStops: stops || [] };
+      }
+
+      // Validate via stops coordinates
+      const validViaStops = [];
+      for (const stop of viaStops) {
+        const coords = getCoordinates(stop);
+        if (coords) {
+          validViaStops.push({ ...stop, coords });
+        } else {
+          debugLogger.error('Skipping via stop with invalid coordinates', {
+            stopName: stop.place?.name
+          });
+        }
+      }
+
+      if (validViaStops.length === 0) {
+        debugLogger.api('No valid via stops found');
+        return { success: true, optimizedStops: stops || [] };
+      }
+
+      // Prepare data for route breakdown API
+      // First try with basic parameters to see if the endpoint works
+      const routeData = {
+        trip_id: tripId,
+        day_id: dayId,
+        start: {
+          lat: startCoords.lat,
+          lon: startCoords.lon,
+          name: startStop.place?.name || 'Start'
+        },
+        stops: validViaStops.map(stop => ({
+          lat: stop.coords.lat,
+          lon: stop.coords.lon,
+          name: stop.place?.name || 'Stop'
+        })),
+        end: {
+          lat: endCoords.lat,
+          lon: endCoords.lon,
+          name: endStop.place?.name || 'End'
+        },
+        profile: 'car'
+      };
+
+      debugLogger.api('Route breakdown request payload', routeData);
+      console.log('🌐 ROUTE BREAKDOWN API REQUEST:');
+      console.log('  URL: POST /routing/days/route-breakdown');
+      console.log('  Headers:', {
+        'Authorization': 'Bearer [TOKEN]',
+        'Content-Type': 'application/json'
+      });
+      console.log('  Payload:', JSON.stringify(routeData, null, 2));
+      console.log('  Payload size:', JSON.stringify(routeData).length, 'bytes');
+
+      const response = await api.post('/routing/days/route-breakdown', routeData);
+
+      console.log('🌐 ROUTE BREAKDOWN API RESPONSE:');
+      console.log('  Status:', response.status);
+      console.log('  Headers:', response.headers);
+      console.log('  Data:', JSON.stringify(response.data, null, 2));
+
+      debugLogger.api('Route breakdown response received', {
+        status: response.status,
+        hasData: !!response.data,
+        hasStops: !!response.data?.stops,
+        stopsCount: response.data?.stops?.length || 0,
+        responseKeys: Object.keys(response.data || {})
+      });
+
+      if (response.data && response.data.stops) {
+        // Map optimized stops back to original stop objects
+        const optimizedOrder = [];
+
+        // Add start stop
+        optimizedOrder.push(startStop);
+
+        // Add via stops in optimized order
+        response.data.stops.forEach((optimizedStop, index) => {
+          debugLogger.api(`Processing optimized stop ${index + 1}`, {
+            lat: optimizedStop.lat,
+            lon: optimizedStop.lon,
+            name: optimizedStop.name
+          });
+
+          const matchingStop = validViaStops.find(stop => {
+            const stopLat = stop.coords.lat;
+            const stopLon = stop.coords.lon;
+            const latMatch = Math.abs(stopLat - optimizedStop.lat) < 0.001;
+            const lonMatch = Math.abs(stopLon - optimizedStop.lon) < 0.001;
+
+            debugLogger.api(`Coordinate matching for ${stop.place?.name}`, {
+              originalLat: stopLat,
+              originalLon: stopLon,
+              optimizedLat: optimizedStop.lat,
+              optimizedLon: optimizedStop.lon,
+              latMatch,
+              lonMatch,
+              isMatch: latMatch && lonMatch
+            });
+
+            return latMatch && lonMatch;
+          });
+
+          if (matchingStop) {
+            optimizedOrder.push(matchingStop);
+            debugLogger.api(`Matched optimized stop to original`, {
+              optimizedName: optimizedStop.name,
+              originalName: matchingStop.place?.name
+            });
+          } else {
+            debugLogger.error(`Could not match optimized stop`, {
+              optimizedStop,
+              availableStops: validViaStops.map(s => ({
+                name: s.place?.name,
+                lat: s.coords.lat,
+                lon: s.coords.lon
+              }))
+            });
+          }
+        });
+
+        // Add end stop
+        optimizedOrder.push(endStop);
+
+        debugLogger.api('Optimized stop order completed', {
+          originalCount: stops.length,
+          optimizedCount: optimizedOrder.length,
+          originalOrder: stops.map(s => s.place?.name),
+          optimizedOrder: optimizedOrder.map(s => s.place?.name)
+        });
+
+        return {
+          success: true,
+          optimizedStops: optimizedOrder,
+          routeData: response.data
+        };
+      } else {
+        debugLogger.api('No optimized stops in response, returning original order');
+        return { success: true, optimizedStops: stops || [] };
+      }
+    } catch (error) {
+      debugLogger.error('Optimized stop order error', {
+        error: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        tripId,
+        dayId
+      });
+
+      console.log('🚨 ROUTE BREAKDOWN API ERROR:');
+      console.log('  Error message:', error.message);
+      console.log('  Error code:', error.code);
+      console.log('  Response status:', error.response?.status);
+      console.log('  Response statusText:', error.response?.statusText);
+      console.log('  Response headers:', error.response?.headers);
+      console.log('  Response data:', JSON.stringify(error.response?.data, null, 2));
+      console.log('  Request config:', {
+        url: error.config?.url,
+        method: error.config?.method,
+        data: error.config?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.detail || error.response?.data?.message || error.message,
+        optimizedStops: stops || [],
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        fullError: {
+          message: error.message,
+          code: error.code,
+          stack: error.stack
+        }
+      };
+    }
+  },
+
+  // Update stops order after route optimization
+  async updateStopsOrder(dayId, optimizedStops) {
+    try {
+      debugLogger.api('Updating stops order', { dayId, stopsCount: optimizedStops.length });
+
+      // Prepare the update payload with new sequences
+      const updates = optimizedStops.map((stop, index) => ({
+        id: stop.id,
+        seq: index + 1, // Update sequence based on new order
+      }));
+
+      console.log('🌐 API REQUEST - Update Stops Order:');
+      console.log(`  URL: PUT /stops/days/${dayId}/reorder`);
+      console.log(`  Body:`, { stops: updates });
+
+      const response = await api.put(`/stops/days/${dayId}/reorder`, {
+        stops: updates
+      });
+
+      debugLogger.api('Stops order updated successfully', {
+        dayId,
+        updatedCount: updates.length,
+        response: response.data
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      console.error('Update stops order error:', error);
+      debugLogger.error('Failed to update stops order', {
+        dayId,
+        error: error.message,
+        status: error.response?.status,
+        responseData: error.response?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message ||
+               error.response?.data?.detail ||
+               error.message ||
+               'Failed to update stops order'
+      };
     }
   }
 };

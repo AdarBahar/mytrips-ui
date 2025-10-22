@@ -4,6 +4,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { tripsService } from '../services/auth';
 import LoadingAnimation from '../components/LoadingAnimation';
 import StatusDropdown from '../components/StatusDropdown';
+import OptimizedStopsList from '../components/OptimizedStopsList';
+import DailyRouteMap from '../components/DailyRouteMap';
+import TripOverviewMap from '../components/TripOverviewMap';
+import RouteOptimizer from '../components/RouteOptimizer';
 import { getStatusInfo } from '../utils/statusUtils';
 
 const TripDetailPage = () => {
@@ -18,6 +22,8 @@ const TripDetailPage = () => {
   const [loadingRouting, setLoadingRouting] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [expandedDays, setExpandedDays] = useState(new Set());
+  const [showOptimizedOrder, setShowOptimizedOrder] = useState(true);
+  const [showTripOverview, setShowTripOverview] = useState(false);
 
   // Sort stops in logical order: Start, via stops (by sequence), End
   const getSortedStopsWithUISequence = (stops) => {
@@ -476,6 +482,35 @@ const TripDetailPage = () => {
               </div>
             ) : null}
 
+            {/* Trip Overview Map */}
+            {tripData && tripData.days && tripData.days.length > 0 && (
+              <div className="trip-overview-section">
+                <div className="overview-controls">
+                  <button
+                    onClick={() => setShowTripOverview(!showTripOverview)}
+                    className="toggle-overview-button"
+                  >
+                    {showTripOverview ? '📍 Hide Trip Overview' : '🗺️ Show Trip Overview'}
+                  </button>
+                  <button
+                    onClick={() => setShowOptimizedOrder(!showOptimizedOrder)}
+                    className="toggle-optimization-button"
+                  >
+                    {showOptimizedOrder ? '📋 Show Manual Order' : '🚀 Show Optimized Order'}
+                  </button>
+                </div>
+
+                {showTripOverview && (
+                  <TripOverviewMap
+                    tripId={tripData.trip.id}
+                    dayIds={tripData.days.map(day => day.id)}
+                    height={500}
+                    interactive={true}
+                  />
+                )}
+              </div>
+            )}
+
             <div className="trip-info-grid">
               {trip.start_date && (
                 <div className="info-item">
@@ -534,46 +569,52 @@ const TripDetailPage = () => {
                     {/* Collapsible Day Content */}
                     {expandedDays.has(day.id) && (
                       <div className="day-content">
-                        {day.stops && day.stops.length > 0 ? (
-                          <div className="stops-list">
-                            {getSortedStopsWithUISequence(day.stops).map((stop, stopIndex) => (
-                              <div key={stop.id || stopIndex} className="stop-card">
-                                <div className="stop-header">
-                                  <span className={`stop-kind ${stop.kind}`}>
-                                    {stop.kind === 'start' ? '🚀' : stop.kind === 'end' ? '🏁' : stop.kind === 'via' ? '📍' : '❓'}
-                                  </span>
-                                  <span className="stop-sequence">#{stop.uiSequence}</span>
-                                  <span className={`stop-kind-label ${stop.kind}`}>
-                                    {stop.kind === 'start' ? 'Start' : stop.kind === 'end' ? 'End' : stop.kind === 'via' ? 'Stop' : 'Unknown'}
-                                  </span>
-                                </div>
+                        {/* Optimized Stops List */}
+                        <OptimizedStopsList
+                          tripId={tripData.trip.id}
+                          dayId={day.id}
+                          stops={day.stops}
+                          showOptimizedOrder={showOptimizedOrder}
+                          onOrderChange={(newOrder) => {
+                            console.log('Stop order changed for day', day.id, newOrder);
+                          }}
+                        />
 
-                                {stop.place && (
-                                  <div className="place-info">
-                                    <h4 className="place-name">{stop.place.name}</h4>
-                                    {stop.place.address && (
-                                      <p className="place-address">📍 {stop.place.address}</p>
-                                    )}
-                                    {stop.place.coordinates && (
-                                      <p className="place-coordinates">
-                                        🗺️ {stop.place.coordinates.lat}, {stop.place.coordinates.lng}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
+                        {/* Route Optimizer */}
+                        <RouteOptimizer
+                          day={{
+                            id: day.id,
+                            trip_id: tripData.trip.id,
+                            seq: day.seq,
+                            stops: day.stops || []
+                          }}
+                          onOptimizationAccepted={async (optimizedStops) => {
+                            try {
+                              // Update stops order in backend
+                              await tripsService.updateStopsOrder(day.id, optimizedStops);
 
-                                {stop.notes && (
-                                  <div className="stop-notes">
-                                    <p>📝 {stop.notes}</p>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="no-stops">
-                            <p>No stops planned for this day</p>
-                          </div>
+                              // Refresh trip data to show updated order
+                              await loadTripData();
+
+                              console.log('Route optimization applied successfully');
+                            } catch (error) {
+                              console.error('Failed to apply route optimization:', error);
+                              // Could show error notification here
+                            }
+                          }}
+                          onOptimizationRejected={() => {
+                            console.log('Route optimization rejected');
+                          }}
+                        />
+
+                        {/* Daily Route Map */}
+                        {day.stops && day.stops.length >= 2 && (
+                          <DailyRouteMap
+                            tripId={tripData.trip.id}
+                            dayId={day.id}
+                            height={350}
+                            showOptimizedRoute={showOptimizedOrder}
+                          />
                         )}
 
                         {/* Route Summary from bulk-active-summaries */}
