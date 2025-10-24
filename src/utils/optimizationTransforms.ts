@@ -98,9 +98,25 @@ export function transformOptimizationResult(
 
   // Transform optimized locations back to stops
   const optimizedStops: Stop[] = result.ordered.map((location, index) => {
-    const originalStop = stopMap.get(location.id);
+    // Extract original stop ID from the optimization ID
+    // The optimization ID format is: "{kind}-{originalId}"
+    let originalStopId = location.id;
+
+    // Check if the ID has a prefix (start-, via-, end-)
+    const prefixMatch = location.id.match(/^(start|via|end)-(.+)$/);
+    if (prefixMatch) {
+      originalStopId = prefixMatch[2]; // Extract the original ID part
+    }
+
+    const originalStop = stopMap.get(originalStopId);
     if (!originalStop) {
-      throw new Error(`Original stop not found for ID: ${location.id}`);
+      console.error('Stop mapping debug info:', {
+        optimizationId: location.id,
+        extractedId: originalStopId,
+        availableStopIds: Array.from(stopMap.keys()),
+        location: location
+      });
+      throw new Error(`Original stop not found for ID: ${location.id} (extracted: ${originalStopId})`);
     }
 
     // Create new stop with updated sequence
