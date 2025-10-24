@@ -180,6 +180,16 @@
   font-size: 0.85rem;
 }
 
+.info-message {
+  background: #e6f3ff;
+  color: #0066cc;
+  padding: 0.65rem;
+  border-radius: 5px;
+  margin-bottom: 1rem;
+  border: 1px solid #b3d9ff;
+  font-size: 0.9rem;
+}
+
 .login-footer {
   text-align: center;
   margin-top: 1.5rem;

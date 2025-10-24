@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const LoginForm = () => {
   const [email, setEmail] = useState('');
@@ -11,6 +11,10 @@ const LoginForm = () => {
   
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Get the return URL from location state
+  const returnUrl = location.state?.from?.pathname;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,8 +32,9 @@ const LoginForm = () => {
       const result = await login(email, password, rememberMe);
       
       if (result.success) {
-        // Redirect to trips page on successful login
-        navigate('/trips');
+        // Redirect to return URL or default to trips page
+        const targetUrl = returnUrl || '/trips';
+        navigate(targetUrl, { replace: true });
       } else {
         setError(result.error || 'Login failed');
       }
@@ -44,7 +49,13 @@ const LoginForm = () => {
     <div className="login-form-container">
       <form onSubmit={handleSubmit} className="login-form">
         <h2>Login to MyTrips</h2>
-        
+
+        {returnUrl && (
+          <div className="info-message">
+            You'll be redirected to: {returnUrl}
+          </div>
+        )}
+
         {error && (
           <div className="error-message">
             {error}
