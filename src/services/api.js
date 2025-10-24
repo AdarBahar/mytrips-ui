@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { debugLogger } from '../config/debug';
+import { navigateToPath, currentPathIncludes } from '../utils/navigation';
 
 // API base URL
 const API_BASE_URL = 'https://mytrips-api.bahar.co.il';
@@ -74,8 +75,7 @@ api.interceptors.response.use(
       debugLogger.auth('Token expired or invalid - handling logout');
 
       // Token expired or invalid - but don't redirect if we're already on login page
-      const currentPath = window.location.pathname;
-      const isOnLoginPage = currentPath.includes('/login') || currentPath === '/';
+      const isOnLoginPage = currentPathIncludes('/login') || window.location.pathname === '/' || window.location.pathname.endsWith('/');
 
       if (!isOnLoginPage) {
         debugLogger.storage('REMOVE', 'authToken');
@@ -86,10 +86,8 @@ api.interceptors.response.use(
         localStorage.removeItem('userEmail');
         localStorage.removeItem('userPassword');
 
-        // Use React Router navigation if available, otherwise fallback to window.location
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        // Navigate to login page with correct base path
+        navigateToPath('/login');
       }
     }
     return Promise.reject(error);

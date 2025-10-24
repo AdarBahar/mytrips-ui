@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { debugLogger } from '../config/debug';
+import { navigateToPath, currentPathIncludes } from '../utils/navigation';
 
 // API configuration with proxy support
 const getApiConfig = () => {
@@ -113,7 +114,7 @@ api.interceptors.response.use(
       debugLogger.auth('Token expired or invalid - handling logout');
 
       // Token expired or invalid - but don't redirect if we're already on login page
-      if (!window.location.pathname.includes('/login')) {
+      if (!currentPathIncludes('/login')) {
         debugLogger.storage('REMOVE', 'authToken');
         debugLogger.storage('REMOVE', 'userEmail');
         debugLogger.storage('REMOVE', 'userPassword');
@@ -121,7 +122,7 @@ api.interceptors.response.use(
         localStorage.removeItem('authToken');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('userPassword');
-        window.location.href = '/login';
+        navigateToPath('/login');
       }
     }
     return Promise.reject(error);
