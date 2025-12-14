@@ -3,43 +3,65 @@ import { debugLogger } from '../config/debug';
 
 // Authentication service functions
 export const authService = {
-  // Login user with email and password
+  // Login user with email and password using JWT login endpoint
   async login(email, password) {
-    debugLogger.auth('Starting login process', { email });
+    console.log('🔑 AUTH SERVICE - Login method called with:', { email });
+    debugLogger.auth('Starting JWT login process', { email });
 
     try {
-      const response = await api.post('/auth/login', {
+      const response = await api.post('/auth/jwt/login', {
         email,
         password,
       });
 
-      debugLogger.auth('Login API response received', {
+      debugLogger.auth('JWT login API response received', {
         status: response.status,
-        hasToken: !!response.data.access_token
+        hasAccessToken: !!response.data.access_token,
+        hasRefreshToken: !!response.data.refresh_token
       });
 
-      const { access_token } = response.data;
+      const { access_token, refresh_token, user } = response.data;
 
       if (access_token) {
-        // Store token in localStorage
+        // Store JWT tokens in localStorage
+        console.log('💾 STORING AUTH DATA - About to store:', {
+          hasAccessToken: !!access_token,
+          hasRefreshToken: !!refresh_token,
+          user: user?.email
+        });
         localStorage.setItem('authToken', access_token);
-        debugLogger.storage('SET', 'authToken', '***TOKEN***');
-        debugLogger.auth('Login successful - token stored');
+        localStorage.setItem('refreshToken', refresh_token);
+        localStorage.setItem('userEmail', email);
 
-        return { success: true, token: access_token };
+        // Verify storage immediately
+        const storedToken = localStorage.getItem('authToken');
+        const storedRefresh = localStorage.getItem('refreshToken');
+        const storedEmail = localStorage.getItem('userEmail');
+        console.log('💾 STORAGE VERIFICATION - Stored data:', {
+          hasToken: !!storedToken,
+          hasRefresh: !!storedRefresh,
+          storedEmail
+        });
+
+        debugLogger.storage('SET', 'authToken', '***TOKEN***');
+        debugLogger.storage('SET', 'refreshToken', '***REFRESH***');
+        debugLogger.storage('SET', 'userEmail', email);
+        debugLogger.auth('JWT login successful - tokens stored');
+
+        return { success: true, access_token, user };
       } else {
-        debugLogger.auth('Login failed - no access token in response');
+        debugLogger.auth('JWT login failed - no access token');
         throw new Error('No access token received');
       }
     } catch (error) {
-      debugLogger.error('AUTH', 'Login failed', {
+      debugLogger.error('AUTH', 'JWT login failed', {
         email,
         error: error.message,
         status: error.response?.status,
         data: error.response?.data
       });
 
-      const errorMessage = error.response?.data?.error?.message ||
+      const errorMessage = error.response?.data?.message ||
                           error.response?.data?.detail ||
                           error.message ||
                           'Login failed';
@@ -50,50 +72,87 @@ export const authService = {
     }
   },
 
-  // Get current user profile
+  // Get current user profile using JWT token
   async getCurrentUser() {
-    debugLogger.auth('Getting current user profile');
+    debugLogger.auth('Getting current user profile using JWT token');
 
     try {
+      const token = this.getAuthToken();
+      const userEmail = this.getUserEmail();
+
+      if (!token) {
+        debugLogger.auth('No auth token found');
+        return {
+          success: false,
+          error: 'No auth token found',
+        };
+      }
+
+      // Make API call to get user profile using the token
       const response = await api.get('/auth/me');
-      debugLogger.auth('User profile retrieved successfully', {
-        userId: response.data.id,
-        email: response.data.email
+      const user = response.data;
+
+      debugLogger.auth('User profile retrieved from API', {
+        userId: user.id,
+        email: user.email
       });
 
-      return { success: true, user: response.data };
+      return { success: true, user };
     } catch (error) {
+      // Handle 401 (token expired/invalid) more gracefully
+      if (error.response?.status === 401) {
+        debugLogger.auth('Auth token expired or invalid, clearing tokens');
+        this.logout();
+        return {
+          success: false,
+          error: 'Token expired',
+        };
+      }
+
+      // Log other errors as actual errors
       debugLogger.error('AUTH', 'Failed to get user profile', error);
 
       return {
         success: false,
-        error: error.response?.data?.detail || error.message || 'Failed to get user info',
+        error: error.message || 'Failed to get user info',
       };
     }
   },
 
-  // Logout user
+  // Logout user (disconnect)
   logout() {
-    debugLogger.auth('Logging out user');
+    debugLogger.auth('Disconnecting user');
     debugLogger.storage('REMOVE', 'authToken');
+    debugLogger.storage('REMOVE', 'refreshToken');
     debugLogger.storage('REMOVE', 'userEmail');
     debugLogger.storage('REMOVE', 'userPassword');
     debugLogger.storage('REMOVE', 'rememberMe');
 
     localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userPassword');
     localStorage.removeItem('rememberMe');
   },
 
-  // Check if user is authenticated
+  // Check if user is authenticated (has auth token)
   isAuthenticated() {
     return !!localStorage.getItem('authToken');
   },
 
-  // Get stored token
-  getToken() {
+  // Get stored auth token
+  getAuthToken() {
     return localStorage.getItem('authToken');
+  },
+
+  // Get stored refresh token
+  getRefreshToken() {
+    return localStorage.getItem('refreshToken');
+  },
+
+  // Get stored user email
+  getUserEmail() {
+    return localStorage.getItem('userEmail');
   },
 
   // Store remember me credentials (simple storage - in production use encryption)
@@ -138,6 +197,20 @@ export const authService = {
 };
 
 // Trips service functions
+// Day status constants to match backend UPPERCASE values
+export const DAY_STATUS = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  DELETED: 'DELETED'
+};
+
+// Helper function to check if a day is active (not deleted)
+export const isDayActive = (day) => {
+  return day &&
+         day.status !== DAY_STATUS.DELETED &&
+         !day.deleted_at;
+};
+
 export const tripsService = {
   // Get user trips with proper parameters
   async getTrips(userId = null) {
@@ -578,6 +651,437 @@ export const tripsService = {
     } catch (error) {
       debugLogger.error('Failed to get bulk route summaries', error);
       return { success: false, error: error.message };
+    }
+  },
+
+  // Create a new day for a trip
+  async createDay(tripId, dayData) {
+    try {
+      debugLogger.api('Creating day', { tripId, dayData });
+
+      const response = await api.post(`/trips/${tripId}/days`, dayData);
+
+      debugLogger.api('Day created successfully', {
+        tripId,
+        dayId: response.data?.id,
+        data: response.data
+      });
+
+      return {
+        success: true,
+        day: response.data
+      };
+    } catch (error) {
+      console.error('Create day error:', error);
+      debugLogger.error('Failed to create day', {
+        tripId,
+        dayData,
+        error: error.message,
+        status: error.response?.status
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Failed to create day'
+      };
+    }
+  },
+
+  // Create a new stop for a day
+  async createStop(tripId, dayId, stopData) {
+    try {
+      debugLogger.api('Creating stop', { tripId, dayId, stopData });
+
+      const response = await api.post(`/stops/${tripId}/days/${dayId}/stops`, stopData);
+
+      debugLogger.api('Stop created successfully', {
+        dayId,
+        stopId: response.data?.id,
+        data: response.data
+      });
+
+      return {
+        success: true,
+        stop: response.data
+      };
+    } catch (error) {
+      console.error('Create stop error:', error);
+      debugLogger.error('Failed to create stop', {
+        dayId,
+        stopData,
+        error: error.message,
+        status: error.response?.status
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Failed to create stop'
+      };
+    }
+  },
+
+  // Search places using autocomplete API
+  async searchPlaces(query, options = {}) {
+    try {
+      debugLogger.api('Searching places', { query, options });
+
+      // Generate session token if not provided
+      const sessionToken = options.sessionToken || `st_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const params = new URLSearchParams({
+        q: query,
+        session_token: sessionToken,
+        limit: options.limit || 8
+      });
+
+      // Add optional parameters
+      if (options.lat && options.lng) {
+        params.append('lat', options.lat);
+        params.append('lng', options.lng);
+        params.append('radius', options.radius || 5000);
+      }
+
+      if (options.countries) {
+        params.append('countries', options.countries);
+      }
+
+      if (options.categories) {
+        params.append('categories', options.categories);
+      }
+
+      if (options.lang) {
+        params.append('lang', options.lang);
+      }
+
+      const response = await api.get(`/places/v1/places/suggest?${params}`);
+
+      debugLogger.api('Places search successful', {
+        query,
+        resultCount: response.data.suggestions?.length || 0,
+        sessionToken
+      });
+
+      return {
+        success: true,
+        data: response.data,
+        sessionToken
+      };
+    } catch (error) {
+      console.error('Search places error:', error);
+      debugLogger.error('Failed to search places', {
+        query,
+        options,
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message || 'Failed to search places'
+      };
+    }
+  },
+
+  // Create a new place
+  async createPlace(placeData) {
+    try {
+      debugLogger.api('Creating place', { placeData });
+
+      const response = await api.post('/places', placeData);
+
+      debugLogger.api('Place created successfully', {
+        placeId: response.data?.id,
+        data: response.data
+      });
+
+      return {
+        success: true,
+        place: response.data
+      };
+    } catch (error) {
+      console.error('Create place error:', error);
+      debugLogger.error('Failed to create place', {
+        placeData,
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Failed to create place'
+      };
+    }
+  },
+
+  // Delete a day using nested REST endpoint
+  async deleteDay(tripId, dayId) {
+    try {
+      debugLogger.api('Deleting day', { tripId, dayId });
+
+      const response = await api.delete(`/trips/${tripId}/days/${dayId}`);
+
+      debugLogger.api('Day deleted successfully', {
+        tripId,
+        dayId,
+        response: response.data
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      console.error('Delete day error:', error);
+      debugLogger.error('Failed to delete day', {
+        tripId,
+        dayId,
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Failed to delete day'
+      };
+    }
+  },
+
+  // Update day sequences in bulk
+  async updateDaySequences(tripId, updates) {
+    try {
+      // Filter out any deleted days before sending bulk update
+      const activeUpdates = updates.filter(update => {
+        // Basic validation - ensure we have valid update data
+        return update.id && update.data && typeof update.data.seq === 'number';
+      });
+
+      if (activeUpdates.length === 0) {
+        debugLogger.api('No active days to update sequences for', { tripId });
+        return {
+          success: true,
+          data: { message: 'No active days to update' }
+        };
+      }
+
+      debugLogger.api('Updating day sequences', {
+        tripId,
+        updates: activeUpdates.map(u => ({ id: u.id, newSeq: u.data.seq }))
+      });
+
+      const response = await api.patch(`/trips/${tripId}/days/bulk`, {
+        updates: activeUpdates
+      });
+
+      debugLogger.api('Day sequences updated successfully', {
+        tripId,
+        updatedCount: activeUpdates.length,
+        response: response.data
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      console.error('Update day sequences error:', error);
+      debugLogger.error('Failed to update day sequences', {
+        tripId,
+        updates,
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Failed to update day sequences'
+      };
+    }
+  },
+
+  // Mark day as rest day
+  async markDayAsRest(tripId, dayId) {
+    try {
+      debugLogger.api('Marking day as rest day', { tripId, dayId });
+
+      const response = await api.patch(`/trips/${tripId}/days/${dayId}`, {
+        rest_day: true
+      });
+
+      debugLogger.api('Day marked as rest day successfully', {
+        tripId,
+        dayId,
+        response: response.data
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      console.error('Mark day as rest error:', error);
+      debugLogger.error('Failed to mark day as rest day', {
+        tripId,
+        dayId,
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.error?.message || error.response?.data?.detail || error.message || 'Failed to mark day as rest day'
+      };
+    }
+  },
+
+  // Helper function to prepare day deletion data
+  prepareDayDeletion(dayToDelete, allDays) {
+    const daySeq = dayToDelete.seq;
+
+    // Filter out any already deleted days and sort by sequence to handle gaps properly
+    const activeDays = allDays.filter(day =>
+      isDayActive(day) &&
+      day.id !== dayToDelete.id // Exclude the day we're about to delete
+    );
+
+    const sortedDays = [...activeDays].sort((a, b) => a.seq - b.seq);
+
+    debugLogger.api('Preparing day deletion', {
+      dayToDelete: { id: dayToDelete.id, seq: daySeq },
+      totalDays: allDays.length,
+      activeDays: activeDays.length,
+      sortedSequences: sortedDays.map(d => ({ id: d.id, seq: d.seq }))
+    });
+
+    // Get days that come after the deleted day (by sequence number)
+    const daysAfterDeleted = sortedDays.filter(day => day.seq > daySeq);
+
+    // Create updates to close the gap - each day moves down by 1 sequence
+    const daysToUpdate = daysAfterDeleted.map((day, index) => {
+      // The new sequence should be the sequence of the day being deleted + index
+      const newSeq = daySeq + index;
+      return {
+        id: day.id,
+        data: { seq: newSeq }
+      };
+    });
+
+    debugLogger.api('Day deletion plan', {
+      daysToUpdate: daysToUpdate.map(d => ({ id: d.id, oldSeq: daysAfterDeleted.find(day => day.id === d.id)?.seq, newSeq: d.data.seq }))
+    });
+
+    return { daysToUpdate };
+  },
+
+  // Delete day with reordering (Option 1) - Backend now handles cascade deletion
+  async deleteDayWithReorder(tripId, dayToDelete, allDays) {
+    try {
+      debugLogger.api('Starting day deletion with reorder', {
+        tripId,
+        dayId: dayToDelete.id,
+        daySeq: dayToDelete.seq
+      });
+
+      const { daysToUpdate } = this.prepareDayDeletion(dayToDelete, allDays);
+
+      // Step 1: Delete the day (backend now automatically soft deletes associated stops)
+      const dayResult = await this.deleteDay(tripId, dayToDelete.id);
+      if (!dayResult.success) {
+        throw new Error(`Failed to delete day: ${dayResult.error}`);
+      }
+
+      // Step 2: Refresh trip data to get updated day list (without deleted days)
+      const tripResult = await this.getTripComplete(tripId);
+      if (!tripResult.success) {
+        console.warn('Failed to refresh trip data after deletion, proceeding with original sequence updates');
+      }
+
+      // Step 3: Update sequences for subsequent days to close the gap
+      if (daysToUpdate.length > 0) {
+        // Filter out any deleted days before sending bulk update
+        const activeDaysToUpdate = daysToUpdate.filter(update => {
+          // If we have fresh trip data, check against it
+          if (tripResult.success && tripResult.trip?.days) {
+            const currentDays = tripResult.trip.days;
+            return currentDays.some(day => day.id === update.id && isDayActive(day));
+          }
+          // Fallback: assume all updates are valid
+          return true;
+        });
+
+        if (activeDaysToUpdate.length > 0) {
+          const sequenceResult = await this.updateDaySequences(tripId, activeDaysToUpdate);
+          if (!sequenceResult.success) {
+            throw new Error(`Failed to update day sequences: ${sequenceResult.error}`);
+          }
+        }
+      }
+
+      debugLogger.api('Day deletion with reorder completed successfully', {
+        tripId,
+        dayId: dayToDelete.id,
+        daysReordered: daysToUpdate.length
+      });
+
+      return {
+        success: true,
+        type: 'deleted',
+        daysReordered: daysToUpdate.length
+      };
+    } catch (error) {
+      console.error('Delete day with reorder error:', error);
+      debugLogger.error('Failed to delete day with reorder', {
+        tripId,
+        dayId: dayToDelete.id,
+        error: error.message
+      });
+
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+  // Convert day to rest day (Option 2) - Backend handles stop deletion automatically
+  async convertDayToRest(tripId, dayToDelete) {
+    try {
+      debugLogger.api('Starting day conversion to rest day', {
+        tripId,
+        dayId: dayToDelete.id
+      });
+
+      // Mark day as rest day (backend will handle stop cleanup if needed)
+      const restResult = await this.markDayAsRest(tripId, dayToDelete.id);
+      if (!restResult.success) {
+        throw new Error(`Failed to mark day as rest day: ${restResult.error}`);
+      }
+
+      debugLogger.api('Day conversion to rest day completed successfully', {
+        tripId,
+        dayId: dayToDelete.id
+      });
+
+      return {
+        success: true,
+        type: 'rest_day'
+      };
+    } catch (error) {
+      console.error('Convert day to rest error:', error);
+      debugLogger.error('Failed to convert day to rest day', {
+        tripId,
+        dayId: dayToDelete.id,
+        error: error.message
+      });
+
+      return {
+        success: false,
+        error: error.message
+      };
     }
   },
 

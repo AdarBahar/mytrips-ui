@@ -8,6 +8,10 @@ import OptimizedStopsList from '../components/OptimizedStopsList';
 import DailyRouteMap from '../components/DailyRouteMap';
 import TripOverviewMap from '../components/TripOverviewMap';
 import RouteOptimizer from '../components/RouteOptimizer';
+import AddDayModal from '../components/AddDayModal';
+import AddStopModal from '../components/AddStopModal';
+import DeleteDayConfirmationModal from '../components/DeleteDayConfirmationModal';
+import DebugInfoTooltip from '../components/DebugInfoTooltip';
 import { getStatusInfo } from '../utils/statusUtils';
 
 const TripDetailPage = () => {
@@ -24,6 +28,11 @@ const TripDetailPage = () => {
   const [expandedDays, setExpandedDays] = useState(new Set());
   const [showOptimizedOrder, setShowOptimizedOrder] = useState(true);
   const [showTripOverview, setShowTripOverview] = useState(false);
+  const [showAddDayModal, setShowAddDayModal] = useState(false);
+  const [showAddStopModal, setShowAddStopModal] = useState(false);
+  const [selectedDayForStop, setSelectedDayForStop] = useState(null);
+  const [showDeleteDayModal, setShowDeleteDayModal] = useState(false);
+  const [selectedDayForDelete, setSelectedDayForDelete] = useState(null);
 
   // Sort stops in logical order: Start, via stops (by sequence), End
   const getSortedStopsWithUISequence = (stops) => {
@@ -310,6 +319,65 @@ const TripDetailPage = () => {
     }
   };
 
+  // Handler for adding a new day
+  const handleAddDay = () => {
+    setShowAddDayModal(true);
+  };
+
+  const handleDayAdded = async (newDay) => {
+    // Refresh the trip data to include the new day
+    await loadTripDetails();
+    setShowAddDayModal(false);
+  };
+
+  // Handler for adding a new stop
+  const handleAddStop = (dayId) => {
+    setSelectedDayForStop(dayId);
+    setShowAddStopModal(true);
+  };
+
+  const handleStopAdded = async (newStop) => {
+    // Refresh the trip data to include the new stop
+    await loadTripDetails();
+    setShowAddStopModal(false);
+    setSelectedDayForStop(null);
+  };
+
+  const handleDeleteDay = (dayId, dayData) => {
+    console.log('Delete day - Day data:', dayData);
+    console.log('Delete day - Trip ID from day:', dayData.trip_id);
+    console.log('Delete day - URL param tripId (slug):', tripId);
+    console.log('Delete day - Actual trip ID from tripData:', tripData?.trip?.id);
+
+    setSelectedDayForDelete({ dayId, dayData });
+    setShowDeleteDayModal(true);
+  };
+
+  const handleDayDeleted = async (result) => {
+    console.log('Day deletion result:', result);
+
+    // Show success message based on the result type
+    if (result.type === 'deleted') {
+      console.log(`Day deleted successfully. ${result.daysReordered || 0} days reordered.`);
+    } else if (result.type === 'rest_day') {
+      console.log(`Day converted to rest day successfully.`);
+    }
+
+    // Refresh trip data to reflect the changes (backend filters out deleted days)
+    console.log('🔄 Refreshing trip data after day deletion...');
+    await loadTripDetails();
+
+    // Also refresh routing data to ensure consistency
+    if (tripData?.days?.length > 0) {
+      console.log('🔄 Refreshing routing data after day deletion...');
+      await loadRoutingData();
+    }
+
+    // Close modal and reset state
+    setShowDeleteDayModal(false);
+    setSelectedDayForDelete(null);
+  };
+
   if (loading) {
     return (
       <div className="trip-detail-page">
@@ -353,8 +421,29 @@ const TripDetailPage = () => {
   const totalStops = days.reduce((sum, day) => sum + (day.stops?.length || 0), 0);
   const totalDays = days.length;
 
+  // Prepare debug data
+  const debugData = {
+    userId: user?.id,
+    tripId: trip?.id,
+    tripSlug: tripId, // URL parameter
+    dayIds: days?.map(day => day.id) || [],
+    stopIds: days?.flatMap(day => day.stops?.map(stop => stop.id) || []) || [],
+    placeIds: days?.flatMap(day => day.stops?.map(stop => stop.place_id) || []) || [],
+    routeIds: days?.map(day => day.route_id).filter(Boolean) || [],
+    otherIds: {
+      'Trip Creator': trip?.created_by,
+      'Current User Email': user?.email,
+      'Trip Status': trip?.status,
+      'Trip Timezone': trip?.timezone,
+      'Total Days': totalDays,
+      'Total Stops': totalStops,
+    }
+  };
+
   return (
     <div className="trip-detail-page">
+      {/* Debug Info Tooltip */}
+      <DebugInfoTooltip {...debugData} />
       <header className="trip-detail-header">
         <div className="header-content">
           {/* Left Side: Back Button */}
@@ -390,7 +479,7 @@ const TripDetailPage = () => {
             <div className="user-section">
               <span className="user-name">{user?.name || user?.email}</span>
               <button onClick={logout} className="logout-button">
-                Logout
+                Disconnect
               </button>
             </div>
           </div>
@@ -534,7 +623,16 @@ const TripDetailPage = () => {
           {/* Days and Itinerary Section */}
           {days.length > 0 ? (
             <div className="itinerary-section">
-              <h2>Itinerary</h2>
+              <div className="section-header">
+                <h2>Itinerary</h2>
+                <button
+                  onClick={handleAddDay}
+                  className="add-day-button"
+                  title="Add a new day to your trip"
+                >
+                  ➕ Add Day
+                </button>
+              </div>
               <div className="days-list">
                 {days.map((day, index) => (
                   <div key={day.id || index} className="day-card">
@@ -544,7 +642,10 @@ const TripDetailPage = () => {
                     >
                       <div className="day-title-section">
                         <div className="day-title-row">
-                          <h3>Day {day.seq}</h3>
+                          <h3>
+                            Day {day.seq}
+                            {day.title && ` - ${day.title}`}
+                          </h3>
                           <span className={`expand-icon ${expandedDays.has(day.id) ? 'expanded' : ''}`}>
                             {expandedDays.has(day.id) ? '▼' : '▶'}
                           </span>
@@ -561,9 +662,26 @@ const TripDetailPage = () => {
                           return null;
                         })()}
                       </div>
-                      {day.calculated_date && (
-                        <span className="day-date">{new Date(day.calculated_date).toLocaleDateString()}</span>
-                      )}
+                      <div className="day-header-right">
+                        {day.calculated_date && (
+                          <span className="day-date">{new Date(day.calculated_date).toLocaleDateString()}</span>
+                        )}
+                        <button
+                          className="delete-day-button"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent day expansion toggle
+                            handleDeleteDay(day.id, day);
+                          }}
+                          title="Delete this day"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3,6 5,6 21,6"></polyline>
+                            <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Collapsible Day Content */}
@@ -645,6 +763,17 @@ const TripDetailPage = () => {
                             <p>Duration: {day.route_info.duration || 'N/A'}</p>
                           </div>
                         )}
+
+                        {/* Add Location Button */}
+                        <div className="day-actions">
+                          <button
+                            onClick={() => handleAddStop(day.id)}
+                            className="add-location-button"
+                            title="Add a new location to this day"
+                          >
+                            📍 Add Location
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -653,7 +782,16 @@ const TripDetailPage = () => {
             </div>
           ) : (
             <div className="no-itinerary">
-              <h2>Itinerary</h2>
+              <div className="section-header">
+                <h2>Itinerary</h2>
+                <button
+                  onClick={handleAddDay}
+                  className="add-day-button"
+                  title="Add a new day to your trip"
+                >
+                  ➕ Add Day
+                </button>
+              </div>
               <p>No days have been planned for this trip yet.</p>
               <p>Start planning your trip by adding days and stops!</p>
             </div>
@@ -661,6 +799,44 @@ const TripDetailPage = () => {
 
         </div>
       </main>
+
+      {/* Modals */}
+      <AddDayModal
+        isOpen={showAddDayModal}
+        onClose={() => setShowAddDayModal(false)}
+        tripId={tripData?.trip?.id}
+        onDayAdded={handleDayAdded}
+      />
+
+      <AddStopModal
+        isOpen={showAddStopModal}
+        onClose={() => {
+          setShowAddStopModal(false);
+          setSelectedDayForStop(null);
+        }}
+        tripId={tripData?.trip?.id}
+        dayId={selectedDayForStop}
+        onStopAdded={handleStopAdded}
+        existingStops={
+          selectedDayForStop
+            ? tripData?.days?.find(d => d.id === selectedDayForStop)?.stops || []
+            : []
+        }
+        userLocation={null} // TODO: Add user location if available
+      />
+
+      <DeleteDayConfirmationModal
+        isOpen={showDeleteDayModal}
+        onClose={() => {
+          setShowDeleteDayModal(false);
+          setSelectedDayForDelete(null);
+        }}
+        tripId={selectedDayForDelete?.dayData?.trip_id || tripData?.trip?.id}
+        dayId={selectedDayForDelete?.dayId}
+        dayData={selectedDayForDelete?.dayData}
+        allDays={tripData?.days || []}
+        onDayDeleted={handleDayDeleted}
+      />
     </div>
   );
 };
